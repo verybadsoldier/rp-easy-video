@@ -1,12 +1,12 @@
 # rp-easy-video
 Helper tool to manage Retroarch shader and overlay configuration. This is very BETA currently, so better do a backup before using it :P
 
-This is heavily inspired by Floob's rp-video-manager (https://github.com/biscuits99/rp-video-manager) and this is basically a rewrite of it.
+This is heavily inspired by Floob's rp-video-manager (https://github.com/biscuits99/rp-video-manager) and it is basically a rewrite of it.
 
 It aims to improve:
-* Presets can be installed ony a per-system basis. So you can have different presets for different systems
-* Generic structure to allow adding more presets without touching code
-* Avoid duplication of information. Every preset has a base config file and system can add or overwrite specific variables
+* Presets can be installed on a per-system basis. So you can have different presets for different systems.
+* Generic structure to allow adding more presets without touching the code.
+* Avoid duplication of information. Every preset has a base config file and systems can add or overwrite specific variables.
 
 What it does not (as opposed to the original rp-video-manager):
 * Does not modify Retroarch core options config
