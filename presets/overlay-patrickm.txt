@@ -1,0 +1,1 @@
+An overlay with scanlines but without bezel.

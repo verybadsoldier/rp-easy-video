@@ -14,23 +14,30 @@ RA_OVERLAYS_DIR="${RA_BASE_DIR}/overlays"
 SYSTEMS=$(find presets/* -type d ! -name all | xargs basename -a)
 
 function uninstall_resources() {
+    echo "Deleting resources from ${RA_OVERLAYS_DIR}/${SELF_NAME}"
     rm -rf "${RA_OVERLAYS_DIR}/${SELF_NAME}"
+
+    echo "Deleting resources from ${RA_SHADER_DIR}/${SELF_NAME}"
     rm -rf "${RA_SHADER_DIR}/${SELF_NAME}"
 }
 
 function install_resources() {
     uninstall_resources
     
+    echo "Installing shaders to ${RA_SHADER_DIR}/${SELF_NAME}"
     cp -r "./resources/shader" "${RA_SHADER_DIR}/${SELF_NAME}"
+
+    echo "Installing overlays to ${RA_OVERLAYS_DIR}/${SELF_NAME}"
     cp -r "./resources/overlays" "${RA_OVERLAYS_DIR}/${SELF_NAME}"
 }
 
 function menu_resources() {
     while :
-     do
-       echo "Resources Menu"
-       PS3=$CONFIGPROMPT
-       select option1 in "Install Resources" "Uninstall Resources" Quit
+    do
+       echo ""
+       echo "-= Resources Menu =-"
+       PS3="Choose: "
+       select option1 in "Install Resources" "Uninstall Resources" Back
        do
          case $REPLY in
            1) # Install Resources
@@ -42,8 +49,8 @@ function menu_resources() {
               uninstall_resources
               break  #  Breaks out of the select, back to the mango loop.
               ;;                                   
-           3) # Quit
-              break 2  # Breaks out 2 levels, the select loop plus the mango while loop, back to the main loop.
+           3) # Back
+              break 3
               ;;                 
            *) # always allow for the unexpected
               echo "Unknown mango operation [${REPLY}]"
@@ -51,8 +58,7 @@ function menu_resources() {
               ;;
          esac
        done
-     done
-     break
+    done
 }
 
 
@@ -124,69 +130,90 @@ function get_supported_systems() {
 function menu_install_preset() {
     local preset=$1
     local supp_systems=($(get_supported_systems "${preset}"))
-    while :
-     do
-       PS3="Choose system (${preset}) to install:"
-       select option1 in "<Quit>" All ${supp_systems[@]}
-       do
-         case $REPLY in
-           1) break 2;;
-           2) 
-              for sys in ${supp_systems[@]}; do
-                install_preset "${preset}" "${sys}"
-              done
-              ;;
-           *) # always allow for the unexpected
-              REPLY=$((${REPLY} - 3))
-              install_preset "${preset}" "${supp_systems[${REPLY}]}"
-              break
-              ;;
-         esac
-       done
+    echo "-= Install Preset =-"
+    echo "Selected Preset: ${preset}"
+    
+    local descr_file="presets/${preset}.txt"
+    local descr
+    [[ -f "$descr_file" ]] && descr=$(cat "${descr_file}")
+    
+    [[ ! -z ${descr} ]] && echo "Description: ${descr}"
+    
+    while : 
+    do
+        PS3="Choose target system: "
+        select option1 in "<- Back" "<All>" ${supp_systems[@]}
+        do
+            case $REPLY in
+            1) 
+                break 2
+                ;;
+            2) 
+                for sys in ${supp_systems[@]}; do
+                    install_preset "${preset}" "${sys}"
+                done
+                ;;
+            *) # always allow for the unexpected
+                REPLY=$((${REPLY} - 3))
+                install_preset "${preset}" "${supp_systems[${REPLY}]}"
+                break
+                ;;
+            esac
+        done
     done
-    break
 }
 
 function menu_presets() {
     local presets=($(get_presets))
-    while :
-     do
-       echo "Choose Preset"
-       PS3=$CONFIGPROMPT
-       select option1 in "<Quit>" ${presets[@]}
-       do
-         case $REPLY in
-           1) break 2;;
-           *) # always allow for the unexpected        
-              REPLY=$((${REPLY} - 2))
-              echo "idx: ${REPLY}"
-              local sel_preset=${presets[${REPLY}]}
-              echo "PRESET: ${sel_preset}"
-              menu_install_preset "${sel_preset}"
-              break
-              ;;
-         esac
-       done
-     done
-     break
+    while : 
+    do
+        echo ""
+        echo "-= Preset Menu =-"
+        echo "Shows a list of all available presets and let you install one"
+        PS3="Choose preset to install: "
+        select option1 in "<- Back" ${presets[@]}
+        do
+            case $REPLY in
+            1) 
+                break 3
+                ;;
+            *)  
+                if [[ ${REPLY} -gt $(( ${#presets[@]} + 1 )) ]]; then
+                    echo "Unknown preset: [${REPLY}]. Choose again..."
+                    break
+                fi
+                REPLY=$((${REPLY} - 2))
+                menu_install_preset "${presets[${REPLY}]}"
+                break
+                ;;
+            esac
+        done
+    done
 }
 
 while :
 do
-    echo "Easy Video Main Menu"
-    PS3=$MAINPROMPT  # PS3 is the prompt for the select construct.
+    echo ""
+    echo "-= Easy Video Main Menu =-"
+    PS3="Choose: "
 
     select option in Resources Presets Quit
     do
-    case $REPLY in
-        1) menu_resources;;
-        2) menu_presets;;
-        3) break 2;;
-        *) # always allow for the unexpected
-           echo "Unknown mango operation [${REPLY}]"
-           break
-           ;;
-    esac
+        case $REPLY in
+            1) 
+                menu_resources
+                ;;
+            2)  
+                menu_presets
+                ;;
+            3) 
+                break 2
+                ;;
+            *) 
+               echo "Invalid input: [${REPLY}]"
+               break
+               ;;
+        esac
     done
 done
 
