@@ -116,7 +116,7 @@ function install_preset_arcade() {
     local dest_dir="${RP_ROMS_DIR}/${sys}"
  
     echo "Copying './presets-arcade/${preset}' to '${dest_dir}'"
-    cp "./presets-arcade/${preset}/*" "${dest_dir}"
+    cp presets-arcade/"${preset}"/* "${dest_dir}"
 }
 
 function get_presets_files() {
@@ -240,6 +240,35 @@ function menu_install_preset_arcade() {
     done
 }
 
+function uninstall_preset_arcade() {
+    echo "-= Uninstall Arcade Preset =-"
+    echo "You are going to install all cfg-files from the following ROM directory!!!"
+    
+    while : 
+    do
+        PS3="Choose target system: "
+        select option1 in "<- Back" ${SYSTEMS_ARCADE[@]}
+        do
+            case $REPLY in
+            1) 
+                break 3
+                ;;
+            *) # always allow for the unexpected
+                if [[ ${REPLY} -gt $(( ${#SYSTEMS_ARCADE[@]} + 1 )) ]]; then
+                    echo "Unknown preset: [${REPLY}]. Choose again..."
+                    break
+                fi
+                REPLY=$((${REPLY} - 2))
+                local sys=${SYSTEMS_ARCADE[${REPLY}]}
+                echo "Deleting all cfg files from directory: ${RP_ROMS_DIR}/${sys}"
+                rm "${RP_ROMS_DIR}/${sys}"/*.cfg
+                break 3
+                ;;
+            esac
+        done
+    done
+}
+
 function menu_presets_arcade() {
     local presets=($(get_presets_arcade))
     while : 
@@ -248,18 +277,25 @@ function menu_presets_arcade() {
         echo "-= Arcade Presets Menu =-"
         echo "Arcade preset are per-ROM presets. The following sets are available"
         PS3="Choose preset to install: "
-        select option1 in "<- Back" ${presets[@]}
+        select option1 in "<- Back" "Uninstall Preset" ${presets[@]}
         do
             case $REPLY in
             1) 
                 break 3
                 ;;
-            *)  
-                if [[ ${REPLY} -gt $(( ${#presets[@]} + 1 )) ]]; then
+            2) 
+                if [[ ${REPLY} -gt $(( ${#presets[@]} + 2 )) ]]; then
                     echo "Unknown preset: [${REPLY}]. Choose again..."
                     break
                 fi
-                REPLY=$((${REPLY} - 2))
+                uninstall_preset_arcade
+                ;;
+            *)  
+                if [[ ${REPLY} -gt $(( ${#presets[@]} + 2 )) ]]; then
+                    echo "Unknown preset: [${REPLY}]. Choose again..."
+                    break
+                fi
+                REPLY=$((${REPLY} - 3))
                 menu_install_preset_arcade "${presets[${REPLY}]}"
                 break
                 ;;
