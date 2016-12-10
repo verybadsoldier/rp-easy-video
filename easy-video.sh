@@ -11,7 +11,11 @@ RA_BASE_DIR="/opt/retropie/emulators/retroarch"
 RA_SHADER_DIR="${RA_BASE_DIR}/shader"
 RA_OVERLAYS_DIR="${RA_BASE_DIR}/overlays"
 
+RP_ROMS_DIR="/home/${USER}/RetroPie/roms"
+
 SYSTEMS=$(find presets/* -type d ! -name all | xargs basename -a)
+
+SYSTEMS_ARCADE=(arcade mame-libretro mame-mame4all fba mame-advmame)
 
 function uninstall_resources() {
     echo "Deleting resources from ${RA_OVERLAYS_DIR}/${SELF_NAME}"
@@ -19,6 +23,12 @@ function uninstall_resources() {
 
     echo "Deleting resources from ${RA_SHADER_DIR}/${SELF_NAME}"
     rm -rf "${RA_SHADER_DIR}/${SELF_NAME}"
+}
+
+function get_systems_arcade() {
+    for sys in ${SYSTEMS_ARCADE}; do
+        [[ -d "${RP_ROMS_DIR}/${sys}" ]] && echo "${sys}"
+    done
 }
 
 function install_resources() {
@@ -61,7 +71,6 @@ function menu_resources() {
     done
 }
 
-
 function install_preset() {
     local preset="$1"
     local sys="$2"
@@ -98,6 +107,18 @@ function install_preset() {
     done
 }
 
+function install_preset_arcade() {
+    local preset="$1"
+    local sys="$2"
+
+    echo "Installing arcade preset '${preset}' for system '${sys}'"
+    
+    local dest_dir="${RP_ROMS_DIR}/${sys}"
+ 
+    echo "Copying './presets-arcade/${preset}' to '${dest_dir}'"
+    cp "./presets-arcade/${preset}/*" "${dest_dir}"
+}
+
 function get_presets_files() {
     find presets/ -maxdepth 1 -name *.cfg
 }
@@ -105,6 +126,10 @@ function get_presets_files() {
 function get_presets() {
     local presets=$(get_presets_files)
     echo ${presets} | xargs -n 1 basename | sed s/\.cfg$//g
+}
+
+function get_presets_arcade() {
+    ls presets-arcade
 }
 
 function get_supported_systems() {
@@ -191,13 +216,65 @@ function menu_presets() {
     done
 }
 
+function menu_install_preset_arcade() {
+    local preset=$1
+    echo "-= Install Arcade Preset =-"
+    echo "Selected Arcade Preset: ${preset}"
+    
+    while : 
+    do
+        PS3="Choose target system: "
+        select option1 in "<- Back" ${SYSTEMS_ARCADE[@]}
+        do
+            case $REPLY in
+            1) 
+                break 2
+                ;;
+            *) # always allow for the unexpected
+                REPLY=$((${REPLY} - 2))
+                install_preset_arcade "${preset}" "${SYSTEMS_ARCADE[${REPLY}]}"
+                break
+                ;;
+            esac
+        done
+    done
+}
+
+function menu_presets_arcade() {
+    local presets=($(get_presets_arcade))
+    while : 
+    do
+        echo ""
+        echo "-= Arcade Presets Menu =-"
+        echo "Arcade preset are per-ROM presets. The following sets are available"
+        PS3="Choose preset to install: "
+        select option1 in "<- Back" ${presets[@]}
+        do
+            case $REPLY in
+            1) 
+                break 3
+                ;;
+            *)  
+                if [[ ${REPLY} -gt $(( ${#presets[@]} + 1 )) ]]; then
+                    echo "Unknown preset: [${REPLY}]. Choose again..."
+                    break
+                fi
+                REPLY=$((${REPLY} - 2))
+                menu_install_preset_arcade "${presets[${REPLY}]}"
+                break
+                ;;
+            esac
+        done
+    done
+}
+
 while :
 do
     echo ""
     echo "-= Easy Video Main Menu =-"
     PS3="Choose: "
 
-    select option in Resources Presets Quit
+    select option in Resources Presets  "Arcade Presets" Quit
     do
         case $REPLY in
             1) 
@@ -207,6 +284,9 @@ do
                 menu_presets
                 ;;
             3) 
+                menu_presets_arcade
+                ;;
+            4) 
                 break 2
                 ;;
             *) 
