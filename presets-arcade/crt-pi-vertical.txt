@@ -1,0 +1,1 @@
+Shader crt-pi-vertical for all vertical games. Setup shader crt-pi as the default shader for the arcade emulator.

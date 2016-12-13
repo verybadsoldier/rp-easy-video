@@ -13,7 +13,7 @@ RA_OVERLAYS_DIR="${RA_BASE_DIR}/overlays"
 
 RP_ROMS_DIR="/home/${USER}/RetroPie/roms"
 
-SYSTEMS=$(find presets/* -type d ! -name all | xargs basename -a)
+SYSTEMS=$(find overlays/* -type d ! -name all | xargs basename -a | sort)
 
 SYSTEMS_ARCADE=(arcade mame-libretro mame-mame4all fba mame-advmame)
 
@@ -31,6 +31,38 @@ function get_systems_arcade() {
     done
 }
 
+function get_overlay_files() {
+    find overlays/ -maxdepth 1 -name *.cfg | sort
+}
+
+function get_overlays() {
+    local overlays=$(get_overlay_files)
+    echo ${overlays} | xargs -n 1 basename | sed s/\.cfg$//g
+}
+
+function get_shaders() {
+    find shaders -type f -exec basename {} \; | sed s/\.cfg$//g | sort
+}
+
+function get_presets_arcade() {
+    find presets-arcade -type d -exec basename {} \; | sort
+}
+
+function get_supported_systems() {
+    local overlay="$1"
+    if [[ "${overlay}" == "None" || -f "overlays/all/${overlay}.cfg" ]]; then
+        echo ${SYSTEMS}
+    else
+        local supp_systems=()
+        for system in ${SYSTEMS[@]}; do
+            if [[ -f "overlays/${system}/${overlay}.cfg" ]]; then
+                supp_systems+=("${system}")
+            fi
+        done
+        echo ${supp_systems[@]}
+    fi
+}
+
 function install_resources() {
     uninstall_resources
     
@@ -41,13 +73,200 @@ function install_resources() {
     cp -r "./resources/overlays" "${RA_OVERLAYS_DIR}/${SELF_NAME}"
 }
 
+function merge_config() {
+    local src="$1"
+    local dest="$2"
+    
+    echo "Merging config - In: ${src} Out: ${dest}"
+    declare -A values
+    iniConfig ' = ' '"' "${src}"
+    local tags=($(iniGetTagsAll))
+    for tag in ${tags[@]}; do
+        iniGet "${tag}"
+        values[${tag}]=${ini_value}
+    done
+    
+    iniConfig ' = ' '"' "$dest"
+    for key in "${!values[@]}"; do 
+        iniSet "${key}" "${values[${key}]}"
+    done
+}
+
+function install_config() {
+    local shader="$1"
+    local overlay="$2"
+    local sys="$3"
+    
+
+    echo "Installing config:"
+    printf "\tShader: ${shader}\n"
+    printf "\tOverlay: ${overlay}\n"
+    printf "\tSystem: ${sys}\n"
+    
+    [[ ! -d "${RP_CFG_DIR}/${sys}" ]] && return 1
+    [[ "${shader}" == "None" ]] && [[ "${overlay}" == "None" ]] && return 2
+    
+    local dest_cfg="${RP_CFG_DIR}/${sys}/retroarch.cfg"
+
+    echo "Creating config: '${dest_cfg}'"
+
+    # create empty config
+    cat > "${dest_cfg}" << _EOF_
+# Settings made here will only override settings in the global retroarch.cfg if placed above the #include line
+
+input_remapping_directory = "/opt/retropie/configs/${sys}/"
+
+#include "/opt/retropie/configs/all/retroarch.cfg"
+_EOF_
+
+    if [[ "${shader}" != "None" ]]; then
+        echo "Merging config from 'shaders/${shader}.cfg'"
+        merge_config "shaders/${shader}.cfg" "${dest_cfg}"
+    fi
+
+    if [[ "${overlay}" != "None" ]]; then
+        echo "Merging config from 'overlays/${overlay}.cfg'"
+        merge_config "overlays/${overlay}.cfg" "${dest_cfg}"
+        
+        # check if we have system specific parameters
+        declare -A sys_values
+        local sys_conf="overlays/${sys}/${overlay}.cfg"
+        echo "Checking for system sepcific settings: '${sys_conf}'"
+        if [[ -f "${sys_conf}" ]]; then
+            echo "Found system sepcific settings: '${sys_conf}'"
+            merge_config "${sys_conf}" "${dest_cfg}"
+        fi
+    fi
+    
+#    echo '#include "/opt/retropie/configs/all/retroarch.cfg"' >> "$dest_cfg"
+#    iniConfig ' = ' '"' "$dest_cfg"
+#    iniSet "input_remapping_directory" "/opt/retropie/configs/${sys}/"
+}
+
+function install_preset_arcade() {
+    local preset="$1"
+    local sys="$2"
+
+    echo "Installing arcade preset '${preset}' for system '${sys}'"
+    
+    local dest_dir="${RP_ROMS_DIR}/${sys}"
+ 
+    echo "Deleting all existing .cfg files in '${dest_dir}'"
+    rm "${dest_dir}/"*.cfg
+    
+    echo "Copying './presets-arcade/${preset}' to '${dest_dir}'"
+    cp presets-arcade/"${preset}"/* "${dest_dir}"
+}
+
+function menu_install() {
+    local shader=$1
+    local overlay=$2
+    local supp_systems=($(get_supported_systems "${overlay}"))
+
+    while : 
+    do
+        echo ""
+        echo "-= Install Configuration =-"
+        echo "Selected Shader: ${shader}"
+        echo "Selected Overlay: ${overlay}"
+        echo ""
+        
+        PS3="Choose target system: "
+        select option1 in "<- Back" "<All>" ${supp_systems[@]}
+        do
+            case $REPLY in
+            1) 
+                break 2
+                ;;
+            2) 
+                for sys in ${supp_systems[@]}; do
+                    install "${preset}" "${sys}"
+                done
+                break
+                ;;
+            *) # always allow for the unexpected
+                REPLY=$((${REPLY} - 3))
+                install_config "${shader}" "${overlay}" "${supp_systems[${REPLY}]}"
+                break
+                ;;
+            esac
+        done
+    done
+}
+
+function menu_overlay() {
+    local shader="$1"
+    local overlays=('None')
+    overlays+=($(get_overlays))
+    while : 
+    do
+        echo ""
+        echo "-= Overlay Menu =-"
+        echo "Shows a list of all available presets and let you install one"
+        PS3="Choose overlay: "
+        select option1 in "<- Back" ${overlays[@]}
+        do
+            case $REPLY in
+            1) 
+                break 3
+                ;;
+            *)  
+                if [[ ${REPLY} -gt $(( ${#overlays[@]} + 1 )) ]]; then
+                    echo "Unknown preset: [${REPLY}]. Choose again..."
+                    break
+                fi
+                REPLY=$((${REPLY} - 2))
+                
+                local overlay="${overlays[${REPLY}]}"
+                if [[ "${shader}" == "None" && "${overlay}" == "None" ]]; then
+                    echo "Both shader and overlay cannot be None!"
+                    break
+                fi
+                menu_install "${shader}" "${overlay}"
+                break
+                ;;
+            esac
+        done
+    done
+}
+
+function menu_shaders() {
+    local shaders=('None')
+    shaders+=($(get_shaders))
+    while : 
+    do
+        echo ""
+        echo "-= Shaders Menu =-"
+        echo "First step is to choose the shader you want to use."
+        PS3="Choose shader: "
+        select option1 in "<- Back" ${shaders[@]}
+        do
+            case $REPLY in
+            1) 
+                break 3
+                ;;
+            *)  
+                if [[ ${REPLY} -gt $(( ${#shaders[@]} + 1 )) ]]; then
+                    echo "Unknown shader: [${REPLY}]. Choose again..."
+                    break
+                fi
+                REPLY=$((${REPLY} - 2))
+                menu_overlay "${shaders[${REPLY}]}"
+                #menu_install_preset "${shaders[${REPLY}]}"
+                break
+                ;;
+            esac
+        done
+    done
+}
+
 function menu_resources() {
     while :
     do
        echo ""
        echo "-= Resources Menu =-"
        PS3="Choose: "
-       select option1 in "Install Resources" "Uninstall Resources" Back
+       select option1 in "Install Resources" "Uninstall Resources" "<- Back"
        do
          case $REPLY in
            1) # Install Resources
@@ -71,158 +290,18 @@ function menu_resources() {
     done
 }
 
-function install_preset() {
-    local preset="$1"
-    local sys="$2"
-    
-    [[ ! -d "${RP_CFG_DIR}/${sys}" ]] && return 1
-    
-    echo "Installing preset '${preset}' for system '${sys}'"
-    
-    local dest_cfg="${RP_CFG_DIR}/${sys}/retroarch.cfg"
- 
-    echo "Copying './presets/${preset}.cfg' to '${dest_cfg}'"
-    cp "./presets/${preset}.cfg" "${dest_cfg}"
-    
-    # check if we have system specific parameters
-    declare -A sys_values
-    local sys_conf="presets/${sys}/${preset}.cfg"
-    echo "Checking for system sepcific settings: '${sys_conf}'"
-    if [[ -f "${sys_conf}" ]]; then
-        echo "Found system sepcific settings: '${sys_conf}'"
-        
-        iniConfig ' = ' '"' "${sys_conf}"
-        local tags=($(iniGetTagsAll))
-        for tag in ${tags[@]}; do
-            iniGet "${tag}"
-            sys_values[${tag}]=${ini_value}
-        done
-    fi
-    
-    iniConfig ' = ' '"' "$dest_cfg"
-    iniSet "input_remapping_directory" "/opt/retropie/configs/${sys}/"
-    
-    for key in "${!sys_values[@]}"; do 
-        iniSet "${key}" "${sys_values[${key}]}"
-    done
-}
-
-function install_preset_arcade() {
-    local preset="$1"
-    local sys="$2"
-
-    echo "Installing arcade preset '${preset}' for system '${sys}'"
-    
-    local dest_dir="${RP_ROMS_DIR}/${sys}"
- 
-    echo "Copying './presets-arcade/${preset}' to '${dest_dir}'"
-    cp presets-arcade/"${preset}"/* "${dest_dir}"
-}
-
-function get_presets_files() {
-    find presets/ -maxdepth 1 -name *.cfg
-}
-
-function get_presets() {
-    local presets=$(get_presets_files)
-    echo ${presets} | xargs -n 1 basename | sed s/\.cfg$//g
-}
-
-function get_presets_arcade() {
-    ls presets-arcade
-}
-
-function get_supported_systems() {
+function menu_install_preset_arcade() {
     local preset=$1
-    rm /tmp/log.txt
-    echo "${preset}" >> /tmp/log.txt
-    if [[ -f "presets/all/${preset}.cfg" ]]; then
-        echo "ALL" >> /tmp/log.txt
-        echo ${SYSTEMS}        
-    else
-        local supp_systems=()
-        for system in ${SYSTEMS[@]}; do
-            echo "Check file: presets/${system}/${preset}.cfg" >> /tmp/log.txt
-            if [[ -f "presets/${system}/${preset}.cfg" ]]; then
-                echo "Found system: ${system}" >> /tmp/log.txt
-                supp_systems+=("${system}")
-            fi
-        done
-        echo ${supp_systems[@]}
-    fi
-}
-
-function menu_install_preset() {
-    local preset=$1
-    local supp_systems=($(get_supported_systems "${preset}"))
-    echo "-= Install Preset =-"
-    echo "Selected Preset: ${preset}"
     
-    local descr_file="presets/${preset}.txt"
-    local descr
-    [[ -f "$descr_file" ]] && descr=$(cat "${descr_file}")
-    
-    [[ ! -z ${descr} ]] && echo "Description: ${descr}"
-    
-    while : 
-    do
-        PS3="Choose target system: "
-        select option1 in "<- Back" "<All>" ${supp_systems[@]}
-        do
-            case $REPLY in
-            1) 
-                break 2
-                ;;
-            2) 
-                for sys in ${supp_systems[@]}; do
-                    install_preset "${preset}" "${sys}"
-                done
-                ;;
-            *) # always allow for the unexpected
-                REPLY=$((${REPLY} - 3))
-                install_preset "${preset}" "${supp_systems[${REPLY}]}"
-                break
-                ;;
-            esac
-        done
-    done
-}
-
-function menu_presets() {
-    local presets=($(get_presets))
     while : 
     do
         echo ""
-        echo "-= Preset Menu =-"
-        echo "Shows a list of all available presets and let you install one"
-        PS3="Choose preset to install: "
-        select option1 in "<- Back" ${presets[@]}
-        do
-            case $REPLY in
-            1) 
-                break 3
-                ;;
-            *)  
-                if [[ ${REPLY} -gt $(( ${#presets[@]} + 1 )) ]]; then
-                    echo "Unknown preset: [${REPLY}]. Choose again..."
-                    break
-                fi
-                REPLY=$((${REPLY} - 2))
-                menu_install_preset "${presets[${REPLY}]}"
-                break
-                ;;
-            esac
-        done
-    done
-}
+        echo "-= Install Arcade Preset =-"
+        echo "Selected Arcade Preset: ${preset}"    
 
-function menu_install_preset_arcade() {
-    local preset=$1
-    echo "-= Install Arcade Preset =-"
-    echo "Selected Arcade Preset: ${preset}"
-    
-    while : 
-    do
+        local descr_file="presets-arcade/${preset}.txt"
+        [[ -f "$descr_file" ]] && printf "Description: \n$(cat "${descr_file}")\n\n"
+
         PS3="Choose target system: "
         select option1 in "<- Back" ${SYSTEMS_ARCADE[@]}
         do
@@ -240,12 +319,13 @@ function menu_install_preset_arcade() {
     done
 }
 
-function uninstall_preset_arcade() {
-    echo "-= Uninstall Arcade Preset =-"
-    echo "You are going to install all cfg-files from the following ROM directory!!!"
-    
+function menu_uninstall_preset_arcade() {
+
     while : 
     do
+        echo ""
+        echo "-= Uninstall Arcade Preset =-"
+        echo "You are going to install all cfg-files from the following ROM directory!!!"
         PS3="Choose target system: "
         select option1 in "<- Back" ${SYSTEMS_ARCADE[@]}
         do
@@ -288,7 +368,7 @@ function menu_presets_arcade() {
                     echo "Unknown preset: [${REPLY}]. Choose again..."
                     break
                 fi
-                uninstall_preset_arcade
+                menu_uninstall_preset_arcade
                 ;;
             *)  
                 if [[ ${REPLY} -gt $(( ${#presets[@]} + 2 )) ]]; then
@@ -310,14 +390,14 @@ do
     echo "-= Easy Video Main Menu =-"
     PS3="Choose: "
 
-    select option in Resources Presets  "Arcade Presets" Quit
+    select option in Resources "Configure System(s)"  "Arcade ROM Configs" Quit
     do
         case $REPLY in
             1) 
                 menu_resources
                 ;;
             2)  
-                menu_presets
+                menu_shaders
                 ;;
             3) 
                 menu_presets_arcade
