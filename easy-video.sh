@@ -13,7 +13,7 @@ RA_OVERLAYS_DIR="${RA_BASE_DIR}/overlays"
 
 RP_ROMS_DIR="/home/${USER}/RetroPie/roms"
 
-SYSTEMS=$(find overlays/* -type d ! -name all | xargs basename -a | sort)
+SYSTEMS=$(find /opt/retropie/configs/* -maxdepth 0 -type d ! -name all | xargs basename -a | sort)
 
 SYSTEMS_ARCADE=(arcade mame-libretro mame-mame4all fba mame-advmame)
 
@@ -105,7 +105,6 @@ function install_config() {
     printf "\tSystem: ${sys}\n"
     
     [[ ! -d "${RP_CFG_DIR}/${sys}" ]] && return 1
-    [[ "${shader}" == "<None>" ]] && [[ "${overlay}" == "<None>" ]] && return 2
     
     local dest_cfg="${RP_CFG_DIR}/${sys}/retroarch.cfg"
 
@@ -220,10 +219,6 @@ function menu_overlay() {
                 REPLY=$((${REPLY} - 2))
                 
                 local overlay="${overlays[${REPLY}]}"
-                if [[ "${shader}" == "<None>" && "${overlay}" == "<None>" ]]; then
-                    echo "Either shader or overlay has to be not None!"
-                    break
-                fi
                 menu_install "${shader}" "${overlay}"
                 break
                 ;;
