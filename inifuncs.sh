@@ -126,10 +126,10 @@ function iniGetTagsAll() {
     while read line
     do
         [[ ${line:0:1} == "#" ]] && continue
-        [[ -z "${line}" ]] && continue
         local toks=(${line//"${__ini_cfg_delim}"/ })
+        [[ ${#toks[@]} -ne 2 ]] && continue
         echo "${toks[0]}"
-    done <"$__ini_cfg_file"
+    done < "$__ini_cfg_file"
 }
 
 ## @fn iniGet()
